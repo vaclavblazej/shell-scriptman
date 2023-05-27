@@ -140,7 +140,7 @@ fn get_scope(global: bool, project: bool, project_path: &Option<PathBuf>) -> Sco
 
 fn find_global_dir() -> PathBuf {
     match std::env::current_exe() {
-        Ok(dir) => dir,
+        Ok(mut dir) => { dir.pop(); dir }
         Err(e) => panic!("cannot retrieve directory of the executable -- place for the global scope scripts: {e}"),
     }
 }
@@ -173,7 +173,7 @@ fn cmd_init_project() -> Result<()> {
     Ok(())
 }
 
-fn cmd_add(dir: &PathBuf, command: &JsonCmd, cmd_group: &mut CmdGroup) -> Result<()> {
+fn cmd_add(dir: &PathBuf, command: Cmd, cmd_group: &mut CmdGroup) -> Result<()> {
     let script_path = dir.join(&command.rel_path);
     let commands_file = ensure_initialized(dir, false)?;
     if !script_path.exists() {
@@ -181,7 +181,7 @@ fn cmd_add(dir: &PathBuf, command: &JsonCmd, cmd_group: &mut CmdGroup) -> Result
         file.write_all(b"#!/usr/bin/env sh\n\necho \"Hello world\"\n")?;
         std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o775)).expect("unable to assign script permissions");
     }
-    cmd_group.commands.push(command.to_cmd_with_group(&cmd_group));
+    cmd_group.commands.push(command);
     to_file(&commands_file, cmd_group)?;
     cmd_edit(&script_path)?;
     Ok(())
@@ -276,8 +276,8 @@ fn main() -> Result<()> {
     }
     let cli_args = builder.get_matches_mut();
     let scope = get_scope(
-        cli_args.get_flag("project"),
         cli_args.get_flag("global"),
+        cli_args.get_flag("project"),
         &project_path,
         );
     let path = scope.to_path(&global_path, &project_path);
@@ -299,7 +299,6 @@ fn main() -> Result<()> {
                 },
                 None => {
                     let rel_path = format!("./.cmd/commands/{alias}.sh");
-                    let command = JsonCmd { alias, rel_path, description };
                     let mut group: CmdGroup = match scope {
                         Scope::GLOBAL => CmdGroup::new(&Scope::PROJECT, &global_path)?,
                         Scope::PROJECT => {
@@ -310,7 +309,8 @@ fn main() -> Result<()> {
                             }
                         },
                     };
-                    cmd_add(&path, &command, &mut group).expect("cannot add command");
+                    let command = JsonCmd { alias, rel_path, description }.to_cmd_with_group(&group);
+                    cmd_add(&path, command, &mut group).expect("cannot add command");
                 },
             }
         },
@@ -318,12 +318,14 @@ fn main() -> Result<()> {
             let some_alias = matched_args.get_one::<String>("ALIAS");
             if let Some(alias) = some_alias{
                 if let Some((command, _)) = find_command(&cmd_groups, &alias) {
+                    // todo path should be chosen by the command and if both exist, then by the flag
                     cmd_edit(&path.join(&command.rel_path))?;
                 } else {
                     println!("{alias} is an unknown command");
                 }
             } else {
-                cmd_edit(&path.join(".cmd").join("index.json"))?;
+                let commands_file = ensure_initialized(&path, false)?;
+                cmd_edit(&commands_file)?;
             }
         },
         "--remove"|"-r" => {
@@ -339,8 +341,14 @@ fn main() -> Result<()> {
             };
             match find_command(&cmd_groups, &(*subcommand).into()) {
                 Some((command, scope)) => {
-                    let script_path = Some(scope.to_path(&global_path, &project_path));
-                    execute(script_path, &command.rel_path, args)?;
+                    let script_path = scope.to_path(&global_path, &project_path);
+                    if script_path.join(&command.rel_path).exists() {
+                        execute(Some(script_path), &command.rel_path, args)?;
+                    } else {
+                        let alias = &command.alias;
+                        let path_str = &command.rel_path;
+                        println!("the {alias} alias is pointed to a non-existant file {path_str}");
+                    }
                 },
                 None => {
                     panic!("unknown subcommand returned from parser");

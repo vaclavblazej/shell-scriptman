@@ -1,7 +1,7 @@
 [
   {
     "alias": "test",
-    "rel_path": "./.cmd/test.sh",
+    "rel_path": "./.cmd/commands/test.sh",
     "description": "Example command that prints the arguments passed into it"
   }
 ]
