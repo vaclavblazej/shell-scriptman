@@ -28,7 +28,7 @@ impl JsonCmd {
             alias: self.alias.to_owned(),
             rel_path: self.rel_path.to_owned(),
             description: self.description.to_owned(),
-            abs_path: path_to_str(&scope_path.join(self.rel_path.to_owned())),
+            abs_path: scope_path.join(self.rel_path.to_owned()),
             scope: scope.to_owned(),
             scope_path: scope_path.to_owned(),
         }
@@ -38,16 +38,15 @@ impl JsonCmd {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Cmd {
     alias: String,
     rel_path: String,
     description: String,
-    abs_path: String,
+    abs_path: PathBuf,
     scope: Scope,
     scope_path: PathBuf,
 }
-
 impl Cmd {
     fn to_json_cmd(&self) -> JsonCmd {
         JsonCmd{
@@ -58,7 +57,7 @@ impl Cmd {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CmdGroup {
     commands: Vec<Cmd>,
     scope: Scope,
@@ -106,7 +105,7 @@ fn path_to_str(path: &PathBuf) -> String {
     path.to_owned().into_os_string().into_string().expect("unable to convert path to string")
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 enum Scope {
     GLOBAL,
     PROJECT,
@@ -193,22 +192,27 @@ fn cmd_edit(script_path: &PathBuf) -> Result<ExitStatus, std::io::Error> {
     execute(None, &editor, [f])
 }
 
-// fn cmd_remove(command_str: &String, groups: &mut Vec<(CmdGroup, Scope)>) -> Result<()> {
-    // if let Some((command, scope)) = find_command(groups, command_str) {
-        // let commands_file = ensure_initialized(&command.scope_path, false)?;
-        // for (group, scope) in groups {
-            // if *scope == command.scope {
-                // group.commands = group.commands.into_iter().filter(|c|{
-                    // c.alias != command_str
-                // }).collect();
-                // return Ok(());
-            // }
-        // }
-        // to_file(&commands_file, groups)?;
-    // }
-    // println!("command {command_str} not found");
-    // Ok(())
-// }
+fn cmd_remove(command_alias: &String, scope: &Scope, groups: &mut Vec<(CmdGroup, Scope)>) -> Result<()> {
+    for (group, group_scope) in groups {
+        if *group_scope == *scope {
+            let osz = group.commands.len();
+            let mut res = vec![];
+            std::mem::swap(&mut res, &mut group.commands);
+            res = res.into_iter().filter(|c|{
+                c.alias != *command_alias
+            }).collect();
+            group.commands = res;
+            let sz = group.commands.len();
+            if sz != osz {
+                let path = group.scope_path.join(".cmd").join("index.json").to_owned();
+                to_file(&path, &group)?;
+                return Ok(())
+            }
+        }
+    }
+    println!("command {command_alias} not found");
+    Ok(())
+}
 
 
 fn find_command<'a>(groups: &'a Vec<(CmdGroup, Scope)>, pattern: &String) -> Option<(&'a Cmd, Scope)> {
@@ -234,6 +238,7 @@ fn main() -> Result<()> {
                      .about("Setup project scope in the current directory"),
                      Command::new("--add").visible_alias("-a")
                      .arg(arg!(<ALIAS>))
+                     .arg(arg!([DESCRIPTION]))
                      .about("Create script and open it in the $EDITOR"),
                      Command::new("--edit").visible_alias("-e")
                      .arg(arg!([ALIAS]).value_parser(clap::value_parser!(String)))
@@ -329,7 +334,16 @@ fn main() -> Result<()> {
             }
         },
         "--remove"|"-r" => {
-            panic!("Not implemented yet");  // todo
+            let alias = matched_args.get_one::<String>("ALIAS").unwrap();
+            let mut scope_opt = None;
+            if let Some((_, cmd_scope)) = find_command(&cmd_groups, &alias) {
+                scope_opt = Some(cmd_scope.to_owned());
+            } else {
+                println!("{alias} is an unknown command");
+            }
+            if let Some(scope) = scope_opt {
+                cmd_remove(&alias, &scope, &mut cmd_groups)?;
+            }
         },
         "--version" => {
             print!("{}", builder.render_version());
