@@ -1,4 +1,4 @@
-use clap::{arg, command, Command};
+use clap::{arg, command, Command, ArgMatches};
 use anyhow::Result;
 use std::{io::Write, path::PathBuf, process::ExitStatus};
 use serde_derive::{Serialize, Deserialize};
@@ -47,12 +47,13 @@ struct Cmd {
     scope: Scope,
     scope_path: PathBuf,
 }
-impl Cmd {
-    fn to_json_cmd(&self) -> JsonCmd {
+
+impl From<&Cmd> for JsonCmd {
+    fn from(item: &Cmd) -> Self {
         JsonCmd{
-            alias: self.alias.to_owned(),
-            rel_path: self.rel_path.to_owned(),
-            description: self.description.to_owned(),
+            alias: item.alias.to_owned(),
+            rel_path: item.rel_path.to_owned(),
+            description: item.description.to_owned(),
         }
     }
 }
@@ -67,7 +68,7 @@ struct CmdGroup {
 impl CmdGroup {
     fn new(scope: &Scope, scope_path: &PathBuf) -> Result<CmdGroup> {
         let command_path = scope_path.join(".cmd").join("index.json").to_owned();
-        let commands = from_file(&command_path)?.into_iter().map(|c|c.to_cmd(scope, scope_path)).collect();
+        let commands = load_from_file(&command_path)?.into_iter().map(|c|c.to_cmd(scope, scope_path)).collect();
         Ok(CmdGroup{
             commands,
             scope: scope.to_owned(),
@@ -76,20 +77,20 @@ impl CmdGroup {
     }
 }
 
-fn to_file(path: &PathBuf, cmd_group: &CmdGroup) -> Result<(), std::io::Error> {
+fn save_to_file(path: &PathBuf, cmd_group: &CmdGroup) -> Result<(), std::io::Error> {
     let commands = &cmd_group.commands;
-    let json_commands: Vec<JsonCmd> = commands.into_iter().map(|c|c.to_json_cmd()).collect();
+    let json_commands: Vec<JsonCmd> = commands.into_iter().map(|c|c.into()).collect();
     let data = serde_json::to_string_pretty(&json_commands)?;
     std::fs::write(path, data)
 }
 
-fn from_file(path: &PathBuf) -> Result<Vec<JsonCmd>> { // todo consider explicit errors
+fn load_from_file(path: &PathBuf) -> Result<Vec<JsonCmd>> { // todo consider explicit errors
     let data = std::fs::read_to_string(path)?;
     let commands = serde_json::from_str::<Vec<JsonCmd>>(&data)?;
     Ok(commands)
 }
 
-fn find_project_dir() -> Option<PathBuf> {
+fn find_local_dir() -> Option<PathBuf> {
     let mut dir: PathBuf = std::env::current_dir().unwrap();
     loop {
         if dir.join(".cmd").exists() {
@@ -108,27 +109,27 @@ fn path_to_str(path: &PathBuf) -> String {
 #[derive(PartialEq, Clone, Debug)]
 enum Scope {
     GLOBAL,
-    PROJECT,
+    LOCAL,
 }
 
 impl Scope{
-    fn to_path(&self, global_path: &PathBuf, project_path: &Option<PathBuf>) -> PathBuf{
+    fn to_path(&self, global_path: &PathBuf, local_path: &Option<PathBuf>) -> PathBuf{
         return match self {
             Scope::GLOBAL => global_path.to_owned(),
-            Scope::PROJECT => project_path.to_owned().unwrap(),
+            Scope::LOCAL => local_path.to_owned().unwrap(),
         };
     }
 }
 
-fn get_scope(global: bool, project: bool, project_path: &Option<PathBuf>) -> Scope {
-    if global {
+fn get_scope(cli_args: &ArgMatches, local_path: &Option<PathBuf>) -> Scope {
+    if cli_args.get_flag("global") {
         Scope::GLOBAL
     } else {
-        match project_path {
-            Some(_) => Scope::PROJECT,
+        match local_path {
+            Some(_) => Scope::LOCAL,
             None => {
-                if project {
-                    panic!("Project option forced but no project is initialized");
+                if cli_args.get_flag("local") {
+                    panic!("Local option forced but no local scope is initialized");
                 } else {
                     Scope::GLOBAL
                 }
@@ -166,7 +167,7 @@ fn ensure_initialized(path: &PathBuf, report: bool) -> Result<PathBuf> {
     Ok(file_path)
 }
 
-fn cmd_init_project() -> Result<()> {
+fn cmd_init_local() -> Result<()> {
     let current_dir: PathBuf = std::env::current_dir().expect("unable to retrieve current directory");
     ensure_initialized(&current_dir, true)?;
     Ok(())
@@ -181,7 +182,7 @@ fn cmd_add(dir: &PathBuf, command: Cmd, cmd_group: &mut CmdGroup) -> Result<()> 
         std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o775)).expect("unable to assign script permissions");
     }
     cmd_group.commands.push(command);
-    to_file(&commands_file, cmd_group)?;
+    save_to_file(&commands_file, cmd_group)?;
     cmd_edit(&script_path)?;
     Ok(())
 }
@@ -192,34 +193,34 @@ fn cmd_edit(script_path: &PathBuf) -> Result<ExitStatus, std::io::Error> {
     execute(None, &editor, [f])
 }
 
-fn cmd_remove(command_alias: &String, scope: &Scope, groups: &mut Vec<(CmdGroup, Scope)>) -> Result<()> {
+fn cmd_remove(command: &Cmd, scope: &Scope, groups: &mut Vec<(CmdGroup, Scope)>) -> Result<()> {
     for (group, group_scope) in groups {
         if *group_scope == *scope {
             let osz = group.commands.len();
             let mut res = vec![];
             std::mem::swap(&mut res, &mut group.commands);
             res = res.into_iter().filter(|c|{
-                c.alias != *command_alias
+                c.alias != *command.alias
             }).collect();
             group.commands = res;
             let sz = group.commands.len();
             if sz != osz {
                 let path = group.scope_path.join(".cmd").join("index.json").to_owned();
-                to_file(&path, &group)?;
+                save_to_file(&path, &group)?;
                 return Ok(())
             }
         }
     }
-    println!("command {command_alias} not found");
+    let alias = &command.alias;
+    println!("command {alias} not found");
     Ok(())
 }
 
-
-fn find_command<'a>(groups: &'a Vec<(CmdGroup, Scope)>, pattern: &String) -> Option<(&'a Cmd, Scope)> {
+fn find_command(groups: &Vec<(CmdGroup, Scope)>, pattern: &String) -> Option<(Cmd, Scope)> {
     for (group, scope) in groups {
         for command in &group.commands {
             if command.alias == *pattern {
-                return Some((command, scope.to_owned()));
+                return Some((command.to_owned(), scope.to_owned()));
             }
         }
     }
@@ -235,7 +236,7 @@ fn main() -> Result<()> {
         .arg_required_else_help(true)
         .subcommands([
                      Command::new("--init").visible_alias("-i")
-                     .about("Setup project scope in the current directory"),
+                     .about("Setup local scope in the current directory"),
                      Command::new("--add").visible_alias("-a")
                      .arg(arg!(<ALIAS>))
                      .arg(arg!([DESCRIPTION]))
@@ -250,7 +251,7 @@ fn main() -> Result<()> {
                      .about("Prints out version information")
         ])
         .args([
-              arg!(-p --project "Force project scope"),
+              arg!(-l --local "Force local scope"),
               arg!(-g --global "Force global scope"),
         ].map(|x|x.required(false)))
         ;
@@ -259,16 +260,16 @@ fn main() -> Result<()> {
     if let Ok(global) = CmdGroup::new(&Scope::GLOBAL, &global_path) {
         cmd_groups.push((global.to_owned(), Scope::GLOBAL));
     }
-    let mut project_commands: Option<CmdGroup> = None;
-    let project_path = find_project_dir();
-    if let Some(project_dir) = &project_path {
-        match CmdGroup::new(&Scope::PROJECT, &project_dir) {
-            Ok(commands) => project_commands = Some(commands),
+    let mut local_commands: Option<CmdGroup> = None;
+    let local_path = find_local_dir();
+    if let Some(local_dir) = &local_path {
+        match CmdGroup::new(&Scope::LOCAL, &local_dir) {
+            Ok(commands) => local_commands = Some(commands),
             Err(e) => println!("ERR: {:?}", e),
         }
     }
-    if let Some(project_commands) = &project_commands {
-        cmd_groups.push((project_commands.to_owned(), Scope::PROJECT));
+    if let Some(local_commands) = &local_commands {
+        cmd_groups.push((local_commands.to_owned(), Scope::LOCAL));
     }
     for (group, _) in &cmd_groups {
         for command in &group.commands {
@@ -280,51 +281,45 @@ fn main() -> Result<()> {
         }
     }
     let cli_args = builder.get_matches_mut();
-    let scope = get_scope(
-        cli_args.get_flag("global"),
-        cli_args.get_flag("project"),
-        &project_path,
-        );
-    let path = scope.to_path(&global_path, &project_path);
     let (subcommand, matched_args) = match cli_args.subcommand() {
         Some((subcommand, matched_args)) => (subcommand, matched_args),
         None => return Ok(()),
     };
     match subcommand {
         "--init"|"-i" => {
-            cmd_init_project().expect("cannot initialize project");
+            cmd_init_local().expect("cannot initialize local scope");
         },
         "--add"|"-a" => {
             let mut args = matched_args.get_many::<String>("ALIAS").unwrap().map(|s| s.to_string());
             let alias: String = args.next().unwrap();
             let description: String = args.next().unwrap_or("".to_string());
-            match find_command(&cmd_groups, &alias) {
-                Some(_) => {
-                    panic!("Unable to create {alias} because it already exists");
-                },
-                None => {
-                    let rel_path = format!("./.cmd/commands/{alias}.sh");
-                    let mut group: CmdGroup = match scope {
-                        Scope::GLOBAL => CmdGroup::new(&Scope::PROJECT, &global_path)?,
-                        Scope::PROJECT => {
-                            if let Some(project_commands) = &project_commands {
-                                project_commands.to_owned()
-                            } else {
-                                CmdGroup::new(&Scope::PROJECT, &global_path)?
-                            }
-                        },
-                    };
-                    let command = JsonCmd { alias, rel_path, description }.to_cmd_with_group(&group);
-                    cmd_add(&path, command, &mut group).expect("cannot add command");
-                },
+            if let None = find_command(&cmd_groups, &alias) {
+                let rel_path = format!("./.cmd/commands/{alias}.sh");
+                let scope = get_scope(&cli_args, &local_path);
+                let path = scope.to_path(&global_path, &local_path);
+                let mut group: CmdGroup = match scope {
+                    Scope::GLOBAL => CmdGroup::new(&Scope::LOCAL, &global_path)?,
+                    Scope::LOCAL => {
+                        if let Some(local_command) = &local_commands {
+                            local_command.to_owned()
+                        } else {
+                            CmdGroup::new(&Scope::LOCAL, &global_path)?
+                        }
+                    },
+                };
+                let command = JsonCmd { alias, rel_path, description }.to_cmd_with_group(&group);
+                cmd_add(&path, command, &mut group).expect("cannot add command");
+            } else  {
+                panic!("Unable to create {alias} because it already exists");
             }
         },
         "--edit"|"-e" => {
             let some_alias = matched_args.get_one::<String>("ALIAS");
+            let scope = get_scope(&cli_args, &local_path);
+            let path = scope.to_path(&global_path, &local_path);
             if let Some(alias) = some_alias{
                 if let Some((command, _)) = find_command(&cmd_groups, &alias) {
-                    // todo path should be chosen by the command and if both exist, then by the flag
-                    cmd_edit(&path.join(&command.rel_path))?;
+                    cmd_edit(&command.abs_path)?;
                 } else {
                     println!("{alias} is an unknown command");
                 }
@@ -335,14 +330,10 @@ fn main() -> Result<()> {
         },
         "--remove"|"-r" => {
             let alias = matched_args.get_one::<String>("ALIAS").unwrap();
-            let mut scope_opt = None;
-            if let Some((_, cmd_scope)) = find_command(&cmd_groups, &alias) {
-                scope_opt = Some(cmd_scope.to_owned());
+            if let Some((command, scope)) = find_command(&cmd_groups, &alias) {
+                cmd_remove(&command, &scope, &mut cmd_groups)?;
             } else {
                 println!("{alias} is an unknown command");
-            }
-            if let Some(scope) = scope_opt {
-                cmd_remove(&alias, &scope, &mut cmd_groups)?;
             }
         },
         "--version" => {
@@ -353,20 +344,17 @@ fn main() -> Result<()> {
                 Some(s) => s.into_iter().map(|s| s.to_string()).collect(),
                 None => vec![],
             };
-            match find_command(&cmd_groups, &(*subcommand).into()) {
-                Some((command, scope)) => {
-                    let script_path = scope.to_path(&global_path, &project_path);
-                    if script_path.join(&command.rel_path).exists() {
-                        execute(Some(script_path), &command.rel_path, args)?;
-                    } else {
-                        let alias = &command.alias;
-                        let path_str = &command.rel_path;
-                        println!("the {alias} alias is pointed to a non-existant file {path_str}");
-                    }
-                },
-                None => {
-                    panic!("unknown subcommand returned from parser");
+            if let Some((command, scope)) = find_command(&cmd_groups, &(*subcommand).into()) {
+                let script_path = scope.to_path(&global_path, &local_path);
+                if script_path.join(&command.rel_path).exists() {
+                    execute(Some(script_path), &command.rel_path, args)?;
+                } else {
+                    let alias = &command.alias;
+                    let path_str = &command.rel_path;
+                    println!("the {alias} alias is pointed to a non-existant file {path_str}");
                 }
+            } else {
+                panic!("unknown subcommand returned from parser");
             }
         },
     }
