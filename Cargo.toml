@@ -2,8 +2,9 @@
 name = "shell-scriptman"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/vaclavblazej/shell-scriptman"
+description = "Manage custom scripts from a central location"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0"
@@ -11,5 +12,3 @@ clap = { version = "4.3.0", features = ["cargo", "string"] }
 serde_json = "1.0.96"
 serde = "1.0.163"
 serde_derive = "1.0.163"
-chrono = { version = "0.4.24", features = ["serde"] }
-home = "0.5.5"

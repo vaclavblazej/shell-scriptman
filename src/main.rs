@@ -154,9 +154,9 @@ fn ensure_initialized(path: &PathBuf, report: bool) -> PathBuf {
     if let Err(_) = std::fs::create_dir(&cmd_dir) {
         if report { println!("INFO: ./.cmd/ folder already exists"); }
     }
-    let cmd_subdir = cmd_dir.join("commands");
+    let cmd_subdir = cmd_dir.join("scripts");
     if let Err(_) = std::fs::create_dir(&cmd_subdir) {
-        if report { println!("INFO: ./.cmd/commands/ folder already exists"); }
+        if report { println!("INFO: ./.cmd/scripts/ folder already exists"); }
     }
     let file_path = cmd_dir.join("index.json");
     if file_path.exists() {
@@ -179,7 +179,7 @@ fn cmd_init_local() {
 fn cmd_add(alias: &String, description: &String, scope: &Scope, groups: &mut Vec<CmdGroup>) {
     let some_command = find_command(&alias, &groups);
     if let None = some_command {
-        let rel_path = format!("./.cmd/commands/{alias}.sh");
+        let rel_path = format!("./.cmd/scripts/{alias}.sh");
         let res: Option<&mut CmdGroup> = get_group_mut(&scope.kind, groups);
         if let Some(&mut ref mut group) = res{
             let command = Cmd::new(alias, &rel_path, description, &group.scope);
@@ -327,9 +327,9 @@ fn main() {
             cmd_init_local();
         },
         "--add"|"-a" => {
-            let mut args = matched_args.get_many::<String>("ALIAS").unwrap().map(|s| s.to_string());
-            let alias: String = args.next().unwrap();
-            let description: String = args.next().unwrap_or("".to_string());
+            let alias: &String = matched_args.get_one::<String>("ALIAS").unwrap();
+            let empty = "".to_string();
+            let description: &String = matched_args.get_one::<String>("DESCRIPTION").unwrap_or(&empty);
             let scope = choose_scope(&cli_args, global_scope, local_scope);
             cmd_add(&alias, &description, &scope, &mut cmd_groups);
         },
