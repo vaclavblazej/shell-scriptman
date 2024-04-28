@@ -15,7 +15,7 @@ bash shell-scriptman/setup.sh
 
 Default invocation of the command `cmd` yields:
 
-```sh
+```txt
 Usage: cmd [OPTIONS] <COMMAND>
 
 Commands:

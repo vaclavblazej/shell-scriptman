@@ -1,13 +1,14 @@
-use clap::{arg, command, Command, ArgMatches};
+use clap::{arg, command, Command, ArgMatches, ValueHint};
+use clap_complete::{generate, Generator, shells::Bash};
 use anyhow::Result;
 use std::{io::Write, path::PathBuf};
 use serde_derive::{Serialize, Deserialize};
 use std::os::unix::fs::PermissionsExt;
 
-fn execute(in_dir: Option<PathBuf>, cmd: &String, args: impl IntoIterator<Item = String>) {
-    if let Some(dir) = in_dir {
-        std::env::set_current_dir(dir).expect("unable to switch to folder {dir}");
-    }
+fn execute(cmd: &String, args: impl IntoIterator<Item = String>) {
+    // if let Some(dir) = from_dir {
+        // std::env::set_current_dir(dir).expect("unable to switch to folder {dir}");
+    // }
     let status = std::process::Command::new(cmd)
         .args(args)
         .spawn()
@@ -134,9 +135,8 @@ fn choose_scope(cli_args: &ArgMatches, global: Scope, local: Option<Scope>) -> S
             None => {
                 if cli_args.get_flag("local") {
                     panic!("local option forced but no local scope is initialized");
-                } else {
-                    global
                 }
+                global
             },
         }
     }
@@ -214,7 +214,7 @@ fn cmd_edit(some_alias: Option<&String>, scope: &Scope, cmd_groups: &Vec<CmdGrou
 fn edit_file(script_path: &PathBuf) {
     let editor = std::env::var("EDITOR").unwrap_or("vim".into());
     let f: String = path_to_str(script_path);
-    execute(None, &editor, [f]);
+    execute(&editor, [f]);
 }
 
 fn cmd_remove(alias: &String, groups: &mut Vec<CmdGroup>) {
@@ -272,17 +272,18 @@ fn main() {
                      Command::new("--init").visible_alias("-i")
                      .about("Setup local scope in the current directory"),
                      Command::new("--add").visible_alias("-a")
-                     .arg(arg!(<ALIAS>))
+                     .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
                      .arg(arg!([DESCRIPTION]))
                      .about("Create script and open it in the $EDITOR"),
                      Command::new("--edit").visible_alias("-e")
                      .arg(arg!([ALIAS]).value_parser(clap::value_parser!(String)))
                      .about("Open script index or [SCRIPT] in the $EDITOR"),
                      Command::new("--remove").visible_alias("-r")
-                     .arg(arg!(<ALIAS>))
+                     .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
                      .about("Remove script from the index (does NOT remove file)"),
                      Command::new("--version")
-                     .about("Prints out version information")
+                     .about("Prints out version information"),
+                     Command::new("--completions").hide(true)
         ])
         .args([
               arg!(-l --local "Force local scope"),
@@ -317,7 +318,13 @@ fn main() {
                 );
         }
     }
+    // let mut builder_copy = builder.clone();
     let cli_args = builder.get_matches_mut();
+    // move to a subcommand
+    // if cli_args.is_present("generate-bash-completions") {
+        // generate(Bash, &mut builder_copy::build_cli(), "myapp", &mut io::stdout());
+    // }
+    // $ myapp generate-bash-completions > /usr/share/bash-completion/completions/myapp.bash
     let (subcommand, matched_args) = match cli_args.subcommand() {
         Some((subcommand, matched_args)) => (subcommand, matched_args),
         None => return,
@@ -342,6 +349,9 @@ fn main() {
             let alias = matched_args.get_one::<String>("ALIAS").unwrap();
             cmd_remove(&alias, &mut cmd_groups);
         },
+        "--completions" => {
+            print!("print completions");
+        },
         "--version" => {
             print!("{}", builder.render_version());
         },
@@ -352,7 +362,9 @@ fn main() {
             };
             if let Some(command) = find_command(&(*subcommand).into(), &cmd_groups) {
                 if command.scope.path.join(&command.rel_path).exists() {
-                    execute(Some(command.scope.path), &command.rel_path, args);
+                    let command_path = command.scope.path.join(&command.rel_path);
+                    let command = command_path.into_os_string().into_string().expect("cannot convert path to string");
+                    execute(&command, args);
                 } else {
                     let alias = &command.alias;
                     let path_str = &command.rel_path;

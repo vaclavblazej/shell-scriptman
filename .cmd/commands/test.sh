@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 
 echo "Hello from $0!"
-echo "I got $# arguments: $@"
+echo "Currently in $(pwd)"
+echo "I got $# arguments: $*"
