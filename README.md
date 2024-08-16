@@ -1,21 +1,51 @@
 # shell-scriptman
 
-    Command-line tool for managing custom shell scripts
+Command-line tool for managing custom shell scripts
 
 Licensed under [MIT](./LICENSE).
 
----
+## Description
 
-## Usage
+This command makes easier managing custom scripts in global and project scope.
+Through `cmd <name>` you can invoke a global script regardless of the current directory.
+Commands for management start with a dash.
+Using `cmd --init` you may create a project scope, allowing management of scripts that are active only when the current directory is a child of the project directory.
+
+All scripts are stored in a hidden `.cmd` folder.
+For project scopes this folder is in the project root where `--init` was invoked.
+For global scope find the folder within the `cmd` command installation folder which can be usually found through invoking `whereis cmd`.
+
+Script is not invoked through a specific shell, it is run directly.
+To setup shell used for its invocation use shebang on its first line, for example:
+
+```sh
+#!/usr/bin/env bash
+#!/usr/bin/env zsh
+#!/usr/bin/env fish
+```
+
+We avoid setting up any extra variables by invoking the script from the current working directory.
+To make a script work from the project root add the following code to the beginning of the script.
+
+```sh
+cd "$(dirname "$0")/../.." || exit
+```
+
+## Installation
+
+Requries `cargo` to compile the rust binary.
 
 ```sh
 git clone https://github.com/vaclavblazej/shell-scriptman.git
 bash shell-scriptman/setup.sh
 ```
 
-Default invocation of the command `cmd` yields:
+## Usage
+
+Running command `cmd` results in:
 
 ```txt
+$ cmd
 Usage: cmd [OPTIONS] <COMMAND>
 
 Commands:
@@ -84,4 +114,3 @@ cmd --global --edit
 
 * release to `crates.io`
 * split help print of global, local, and management commands
-* enable completion

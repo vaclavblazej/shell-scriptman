@@ -1,5 +1,10 @@
 #!/usr/bin/env sh
 
-echo "Hello from $0!"
-echo "Currently in $(pwd)"
-echo "I got $# arguments: $*"
+echo "----------------------------------------"
+echo "Script location is $0"
+echo "Working directory $(pwd)"
+echo "I got $# arguments:"
+for arg in "$@"; do
+    echo "$arg"
+done
+echo "----------------------------------------"

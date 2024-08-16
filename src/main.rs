@@ -1,14 +1,10 @@
 use clap::{arg, command, Command, ArgMatches, ValueHint};
-use clap_complete::{generate, Generator, shells::Bash};
 use anyhow::Result;
 use std::{io::Write, path::PathBuf};
 use serde_derive::{Serialize, Deserialize};
 use std::os::unix::fs::PermissionsExt;
 
 fn execute(cmd: &String, args: impl IntoIterator<Item = String>) {
-    // if let Some(dir) = from_dir {
-        // std::env::set_current_dir(dir).expect("unable to switch to folder {dir}");
-    // }
     let status = std::process::Command::new(cmd)
         .args(args)
         .spawn()
@@ -93,7 +89,7 @@ fn save_to_file(path: &PathBuf, cmd_group: &CmdGroup) {
 }
 
 fn load_from_file(path: &PathBuf) -> Result<Vec<JsonCmd>> {
-    let data = std::fs::read_to_string(path).expect("cannot parse");
+    let data = std::fs::read_to_string(path)?;
     let commands = serde_json::from_str::<Vec<JsonCmd>>(&data)?;
     Ok(commands)
 }
@@ -269,25 +265,24 @@ fn main() {
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommands([
-                     Command::new("--init").visible_alias("-i")
-                     .about("Setup local scope in the current directory"),
-                     Command::new("--add").visible_alias("-a")
-                     .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
-                     .arg(arg!([DESCRIPTION]))
-                     .about("Create script and open it in the $EDITOR"),
-                     Command::new("--edit").visible_alias("-e")
-                     .arg(arg!([ALIAS]).value_parser(clap::value_parser!(String)))
-                     .about("Open script index or [SCRIPT] in the $EDITOR"),
-                     Command::new("--remove").visible_alias("-r")
-                     .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
-                     .about("Remove script from the index (does NOT remove file)"),
-                     Command::new("--version")
-                     .about("Prints out version information"),
-                     Command::new("--completions").hide(true)
+            Command::new("--init").visible_alias("-i")
+            .about("Setup local scope in the current directory"),
+            Command::new("--add").visible_alias("-a")
+            .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
+            .arg(arg!([DESCRIPTION]))
+            .about("Create script and open it in the $EDITOR"),
+            Command::new("--edit").visible_alias("-e")
+            .arg(arg!([ALIAS]).value_parser(clap::value_parser!(String)))
+            .about("Open script index or [SCRIPT] in the $EDITOR"),
+            Command::new("--remove").visible_alias("-r")
+            .arg(arg!(<ALIAS>).value_hint(ValueHint::Other))
+            .about("Remove script from the index (does NOT remove file)"),
+            Command::new("--version")
+            .about("Prints out version information")
         ])
         .args([
-              arg!(-l --local "Force local scope"),
-              arg!(-g --global "Force global scope"),
+            arg!(-l --local "Force local scope"),
+            arg!(-g --global "Force global scope"),
         ].map(|x|x.required(false)))
         ;
     let mut cmd_groups: Vec<CmdGroup> = vec![];
@@ -318,13 +313,7 @@ fn main() {
                 );
         }
     }
-    // let mut builder_copy = builder.clone();
     let cli_args = builder.get_matches_mut();
-    // move to a subcommand
-    // if cli_args.is_present("generate-bash-completions") {
-        // generate(Bash, &mut builder_copy::build_cli(), "myapp", &mut io::stdout());
-    // }
-    // $ myapp generate-bash-completions > /usr/share/bash-completion/completions/myapp.bash
     let (subcommand, matched_args) = match cli_args.subcommand() {
         Some((subcommand, matched_args)) => (subcommand, matched_args),
         None => return,
@@ -349,15 +338,12 @@ fn main() {
             let alias = matched_args.get_one::<String>("ALIAS").unwrap();
             cmd_remove(&alias, &mut cmd_groups);
         },
-        "--completions" => {
-            print!("print completions");
-        },
         "--version" => {
             print!("{}", builder.render_version());
         },
         _ => {
             let args = match matched_args.get_many::<String>("args") {
-                Some(s) => s.into_iter().map(|s| s.to_string()).collect(),
+                Some(s) => s.into_iter().map(|s|s.to_string()).collect(),
                 None => vec![],
             };
             if let Some(command) = find_command(&(*subcommand).into(), &cmd_groups) {
