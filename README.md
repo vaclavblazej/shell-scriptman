@@ -4,6 +4,11 @@ This program allows users to efficiently manage and execute custom shell scripts
 
 Licensed under [MIT](./LICENSE).
 
+```sh
+cargo install shell-scriptman
+ln -s ~/.cargo/bin/shell-scriptman cmd
+```
+
 ## Description
 
 This tool simplifies the management of custom scripts across global and project-specific scopes.
