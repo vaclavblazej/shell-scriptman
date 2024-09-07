@@ -1,19 +1,20 @@
 # shell-scriptman
 
-Command-line tool for managing custom shell scripts
+This program allows users to efficiently manage and execute custom shell scripts by organizing them into local or global scopes, creating new scripts, editing existing ones, or removing obsolete entries—all with a simple interface.
 
 Licensed under [MIT](./LICENSE).
 
 ## Description
 
-This command makes easier managing custom scripts in global and project scope.
-Through `cmd <name>` you can invoke a global script regardless of the current directory.
-Commands for management start with a dash.
-Using `cmd --init` you may create a project scope, allowing management of scripts that are active only when the current directory is a child of the project directory.
+This tool simplifies the management of custom scripts across global and project-specific scopes.
+By using `cmd <name>`, you can invoke a global script from any directory.
+Commands for script management begin with a dash or double dash.
+
+You can create a project scope with `cmd --init`, enabling the management of scripts that are active only when the current directory is within the project directory.
 
 All scripts are stored in a hidden `.cmd` folder.
-For project scopes this folder is in the project root where `--init` was invoked.
-For global scope find the folder within the `cmd` command installation folder which can be usually found through invoking `whereis cmd`.
+For project scopes, this folder is located in the project root where `--init` was run.
+For the global scope, the folder is within the `cmd` command's installation directory, which you can usually find by running `whereis cmd`.
 
 Script is not invoked through a specific shell, it is run directly.
 To setup shell used for its invocation use shebang on its first line, for example:

@@ -3,13 +3,20 @@ name = "shell-scriptman"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/vaclavblazej/shell-scriptman"
-description = "Manage custom scripts from a central location"
+description = "Manage and execute custom shell commands with ease"
 license = "MIT"
+homepage = "https://github.com/vaclavblazej/shell-scriptman"
+readme = "README.md"
+keywords = ["shell", "scripts", "manager", "utility", "cli"]
+categories = ["command-line-utilities"]
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+]
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.3.1", features = ["cargo", "string"] }
-clap_complete = "4.3.1"
 serde_json = "1.0.96"
 serde = "1.0.163"
 serde_derive = "1.0.163"
