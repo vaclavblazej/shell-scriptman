@@ -102,7 +102,7 @@ cmd --edit
 Finally, you may remove a script via `--remove` command.
 
 ```sh
-cmd --edit hello
+cmd --remove hello
 ```
 
 ## Scopes
